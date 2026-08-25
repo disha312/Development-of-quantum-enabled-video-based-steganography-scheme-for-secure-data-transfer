@@ -43,3 +43,41 @@ encryption/
 ├── test_encryption.py
 ├── requirements.txt
 └── README.md
+```
+
+## File Description
+
+aes_encryption.py
+
+Contains the main AES encryption functions.
+
+It:
+
+Reads binary data.
+Generates a random IV.
+Creates an AES-CBC cipher.
+Adds padding.
+Encrypts the data.
+Stores the IV together with the ciphertext.
+encrypt_video.py
+
+This is the main script used to encrypt a video file.
+
+It provides:
+
+Input video path
+Encryption key
+Output encrypted file path
+test_encryption.py
+
+Used to test the AES encryption function with sample data before testing it with a video file.
+
+requirements.txt
+
+Contains the Python dependency required by this module.
+
+Technologies Used
+Python 3.11+
+PyCryptodome
+AES-256
+CBC Mode
