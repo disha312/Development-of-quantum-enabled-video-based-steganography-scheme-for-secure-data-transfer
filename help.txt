@@ -1,0 +1,16 @@
+Run these commands in the terminal before running the main sh_qkd.py file :
+
+mkdir C:\Users\Dell\Documents\FinalYearProject\QKD\data_to_hide
+copy C:\Users\Dell\Documents\FinalYearProject\QKD\quantum_key.bin C:\Users\Dell\Documents\FinalYearProject\QKD\data_to_hide\
+
+
+
+"qiskit is not found " error in the terminal :
+            Download the official Microsoft VC++ Redistributable (x64) here:
+                https://aka.ms/vs/17/release/vc_redist.x64.exe
+            then Re-test:
+                C:\Users\Dell\AppData\Local\Programs\Python\Python313\python.exe -c "from qiskit_aer import AerSimulator; print('aer ok')"
+
+            now run the file sh_qkd.py
+            
+
