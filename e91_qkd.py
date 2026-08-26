@@ -18,7 +18,6 @@ except ImportError:
     QISKIT_AVAILABLE = False
     print("Warning: Qiskit not available. Using simulation mode.")
 
-
 @dataclass
 class E91Result:
     """Results from E91 protocol execution"""
