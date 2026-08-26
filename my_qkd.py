@@ -257,6 +257,15 @@ def main():
     print("Share 'quantum_key.bin' with your crypto teammate.")
     print("They can use it for AES encryption.")
 
+    # ADD VIEW KEY HERE (indented inside main)
+    print("\n" + "="*60)
+    print("VIEWING SAVED KEY")
+    print("="*60)
+    with open('quantum_key.bin', 'rb') as f:
+        key = f.read()
+    print("Saved key (hex):", key.hex())
+    print("Length:", len(key), "bytes")
+    print("Length:", len(key)*8, "bits")
 
 # This runs when you execute: python my_qkd.py
 if __name__ == "__main__":
