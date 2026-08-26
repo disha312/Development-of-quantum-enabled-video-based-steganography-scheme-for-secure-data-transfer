@@ -1,0 +1,26 @@
+# --- Python ---
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# --- Virtual environments ---
+venv/
+qkd_env/
+env/
+.venv/
+
+# --- Generated keys and payloads (never commit real or demo keys) ---
+quantum_key.bin
+shared_with_team/
+confidential_payload.zip
+recovered_data/
+temp_video_frames/
+
+# --- Test/demo data (add real files locally, not to the repo) ---
+data_to_hide/
+
+# --- OS/editor cruft ---
+.vscode/
+.DS_Store
+Thumbs.db
