@@ -2477,3 +2477,172 @@ else:
     print(
         "\nDAY 9 VIDEO EXTRACTION: FAILED"
     )
+
+    # ============================================================
+# DAY 11 — ZIP PAYLOAD
+# ============================================================
+
+import zipfile
+from pathlib import Path
+
+
+DAY11_INPUT_FILE = "payload/test.txt"
+DAY11_ZIP_FILE = "output/day11_payload.zip"
+
+
+def zip_payload(input_file, zip_file):
+    input_path = Path(input_file)
+
+    if not input_path.exists():
+        raise FileNotFoundError(
+            f"Could not find {input_file}"
+        )
+
+    Path(zip_file).parent.mkdir(
+        parents=True,
+        exist_ok=True
+    )
+
+    with zipfile.ZipFile(
+        zip_file,
+        "w",
+        compression=zipfile.ZIP_DEFLATED
+    ) as zf:
+
+        zf.write(
+            input_path,
+            arcname=input_path.name
+        )
+
+
+def file_to_binary(file_path):
+
+    data = Path(file_path).read_bytes()
+
+    bits = "".join(
+        format(byte, "08b")
+        for byte in data
+    )
+
+    return bits
+
+
+print()
+print("=" * 60)
+print("DAY 11 — ZIP PAYLOAD")
+print("=" * 60)
+
+zip_payload(
+    DAY11_INPUT_FILE,
+    DAY11_ZIP_FILE
+)
+
+zip_bits = file_to_binary(
+    DAY11_ZIP_FILE
+)
+
+print(f"Input file: {DAY11_INPUT_FILE}")
+print(f"ZIP file: {DAY11_ZIP_FILE}")
+print(f"ZIP size: {Path(DAY11_ZIP_FILE).stat().st_size} bytes")
+print(f"Binary payload size: {len(zip_bits)} bits")
+
+print()
+print("DAY 11 ZIP PAYLOAD: SUCCESS")
+print("Files → ZIP → Binary → Ready for embedding")
+
+# ============================================================
+# DAY 12 — ZIP RECOVERY
+# ============================================================
+
+DAY12_ZIP_INPUT = "output/day11_payload.zip"
+DAY12_RECOVERED_ZIP = "output/day12_recovered.zip"
+DAY12_RECOVERED_DIR = "output/day12_recovered_files"
+
+
+def binary_to_file(bits, output_file):
+
+    if len(bits) % 8 != 0:
+        raise ValueError(
+            "Binary payload length must be a multiple of 8"
+        )
+
+    data = bytes(
+        int(bits[i:i + 8], 2)
+        for i in range(0, len(bits), 8)
+    )
+
+    Path(output_file).write_bytes(data)
+
+
+def recover_zip_from_binary(zip_file):
+
+    zip_bytes = Path(zip_file).read_bytes()
+
+    bits = "".join(
+        format(byte, "08b")
+        for byte in zip_bytes
+    )
+
+    return bits
+
+
+print()
+print("=" * 60)
+print("DAY 12 — ZIP RECOVERY")
+print("=" * 60)
+
+# Read the ZIP as binary.
+recovery_bits = recover_zip_from_binary(
+    DAY12_ZIP_INPUT
+)
+
+print(f"Original ZIP: {DAY12_ZIP_INPUT}")
+print(f"Binary payload: {len(recovery_bits)} bits")
+
+# Reconstruct the ZIP.
+binary_to_file(
+    recovery_bits,
+    DAY12_RECOVERED_ZIP
+)
+
+# Extract the reconstructed ZIP.
+Path(DAY12_RECOVERED_DIR).mkdir(
+    parents=True,
+    exist_ok=True
+)
+
+with zipfile.ZipFile(
+    DAY12_RECOVERED_ZIP,
+    "r"
+) as zf:
+
+    zf.extractall(
+        DAY12_RECOVERED_DIR
+    )
+
+recovered_file = (
+    Path(DAY12_RECOVERED_DIR)
+    / Path(DAY11_INPUT_FILE).name
+)
+
+original_data = Path(
+    DAY11_INPUT_FILE
+).read_bytes()
+
+recovered_data = recovered_file.read_bytes()
+
+print(f"Recovered file: {recovered_file}")
+print(f"Original size: {len(original_data)} bytes")
+print(f"Recovered size: {len(recovered_data)} bytes")
+
+if original_data == recovered_data:
+
+    print()
+    print("DAY 12 ZIP RECOVERY: SUCCESS")
+    print("Original and recovered files are byte-for-byte identical.")
+
+else:
+
+    print()
+    print("DAY 12 ZIP RECOVERY: FAILED")
+    print("Recovered file differs from original.")
