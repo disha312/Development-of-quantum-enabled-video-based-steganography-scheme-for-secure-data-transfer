@@ -1946,3 +1946,318 @@ else:
     print(
         f"Got:      {selected_frames}"
     )
+
+    # ============================================================
+# DAY 7 — EMBED PAYLOAD ACROSS VIDEO FRAMES
+# ============================================================
+
+print("\n\n============================================================")
+print("DAY 7 — EMBED ACROSS VIDEO FRAMES")
+print("============================================================")
+
+DAY7_VIDEO_INPUT = "input/MyTest_Video.mp4"
+DAY7_VIDEO_OUTPUT = "output/day7_embedded_video.mp4"
+
+DAY7_TEXT = "HELLO WORLD"
+DAY7_BITS = convert_to_bits(DAY7_TEXT)
+
+FRAME_INTERVAL = 10
+
+print(f"Input video: {DAY7_VIDEO_INPUT}")
+print(f"Secret text: {DAY7_TEXT}")
+print(f"Total payload bits: {len(DAY7_BITS)}")
+print(f"Frame interval: every {FRAME_INTERVAL} frames")
+
+
+# ------------------------------------------------------------
+# 1. Open video
+# ------------------------------------------------------------
+
+day7_cap = cv2.VideoCapture(
+    DAY7_VIDEO_INPUT
+)
+
+if not day7_cap.isOpened():
+    raise IOError(
+        f"Could not open video: {DAY7_VIDEO_INPUT}"
+    )
+
+
+fps = day7_cap.get(cv2.CAP_PROP_FPS)
+width = int(
+    day7_cap.get(cv2.CAP_PROP_FRAME_WIDTH)
+)
+height = int(
+    day7_cap.get(cv2.CAP_PROP_FRAME_HEIGHT)
+)
+total_frames = int(
+    day7_cap.get(cv2.CAP_PROP_FRAME_COUNT)
+)
+
+print(f"FPS: {fps}")
+print(f"Resolution: {width} x {height}")
+print(f"Total frames: {total_frames}")
+
+
+# ------------------------------------------------------------
+# 2. Create temporary output video
+# ------------------------------------------------------------
+
+fourcc = cv2.VideoWriter_fourcc(
+    *"mp4v"
+)
+
+day7_writer = cv2.VideoWriter(
+    DAY7_VIDEO_OUTPUT,
+    fourcc,
+    fps,
+    (width, height),
+    True
+)
+
+if not day7_writer.isOpened():
+    day7_cap.release()
+
+    raise IOError(
+        f"Could not create output video: "
+        f"{DAY7_VIDEO_OUTPUT}"
+    )
+
+
+# ------------------------------------------------------------
+# 3. Calculate payload capacity per selected frame
+# ------------------------------------------------------------
+
+BITS_PER_FRAME = 40
+
+payload_position = 0
+selected_frame_count = 0
+embedded_frame_count = 0
+
+
+# ------------------------------------------------------------
+# 4. Process video frames
+# ------------------------------------------------------------
+
+frame_number = 0
+
+while True:
+
+    success, frame = day7_cap.read()
+
+    if not success:
+        break
+
+    # Select every Nth frame.
+    if (
+        frame_number % FRAME_INTERVAL == 0
+        and payload_position < len(DAY7_BITS)
+    ):
+
+        selected_frame_count += 1
+
+        # Convert frame to grayscale for
+        # DWT + DCT processing.
+        gray_frame = cv2.cvtColor(
+            frame,
+            cv2.COLOR_BGR2GRAY
+        )
+
+        # DWT.
+        LL, (
+            LH,
+            HL,
+            HH
+        ) = pywt.dwt2(
+            gray_frame.astype(
+                np.float32
+            ),
+            "haar"
+        )
+
+        # DCT on HH.
+        dct_hh = cv2.dct(HH)
+
+        # Take the next payload chunk.
+        remaining_bits = (
+            len(DAY7_BITS)
+            - payload_position
+        )
+
+        chunk_size = min(
+            BITS_PER_FRAME,
+            remaining_bits
+        )
+
+        chunk = DAY7_BITS[
+            payload_position:
+            payload_position + chunk_size
+        ]
+
+        # Generate coefficient pairs.
+        pairs = generate_pairs(
+            chunk_size
+        )
+
+        # Embed chunk.
+        for bit, pair in zip(
+            chunk,
+            pairs
+        ):
+
+            (row_a, col_a), (
+                row_b,
+                col_b
+            ) = pair
+
+            coefficient_a = (
+                dct_hh[
+                    row_a,
+                    col_a
+                ]
+            )
+
+            coefficient_b = (
+                dct_hh[
+                    row_b,
+                    col_b
+                ]
+            )
+
+            centre = (
+                coefficient_a
+                + coefficient_b
+            ) / 2.0
+
+            if bit == 1:
+
+                dct_hh[
+                    row_a,
+                    col_a
+                ] = centre + 25.0
+
+                dct_hh[
+                    row_b,
+                    col_b
+                ] = centre - 25.0
+
+            else:
+
+                dct_hh[
+                    row_a,
+                    col_a
+                ] = centre - 25.0
+
+                dct_hh[
+                    row_b,
+                    col_b
+                ] = centre + 25.0
+
+
+        # Inverse DCT.
+        modified_HH = cv2.idct(
+            dct_hh
+        )
+
+        # Inverse DWT.
+        reconstructed = pywt.idwt2(
+            (
+                LL,
+                (
+                    LH,
+                    HL,
+                    modified_HH
+                )
+            ),
+            "haar"
+        )
+
+        reconstructed = np.clip(
+            reconstructed,
+            0,
+            255
+        ).astype(np.uint8)
+
+        # Convert grayscale stego frame
+        # back to BGR so the video writer
+        # receives the expected format.
+        frame = cv2.cvtColor(
+            reconstructed,
+            cv2.COLOR_GRAY2BGR
+        )
+
+        payload_position += chunk_size
+        embedded_frame_count += 1
+
+        print(
+            f"Frame {frame_number}: "
+            f"embedded {chunk_size} bits"
+        )
+
+    # Write frame whether modified or not.
+    day7_writer.write(frame)
+
+    frame_number += 1
+
+
+# ------------------------------------------------------------
+# 5. Release video resources
+# ------------------------------------------------------------
+
+day7_cap.release()
+day7_writer.release()
+
+
+# ------------------------------------------------------------
+# 6. Final result
+# ------------------------------------------------------------
+
+print("\n--- DAY 7 FINAL RESULT ---")
+
+print(
+    f"Frames processed: {frame_number}"
+)
+
+print(
+    f"Selected frames: {selected_frame_count}"
+)
+
+print(
+    f"Frames carrying payload: "
+    f"{embedded_frame_count}"
+)
+
+print(
+    f"Bits embedded: {payload_position}"
+)
+
+print(
+    f"Total payload bits: {len(DAY7_BITS)}"
+)
+
+print(
+    f"Output video: {DAY7_VIDEO_OUTPUT}"
+)
+
+
+if payload_position == len(DAY7_BITS):
+
+    print(
+        "\nDAY 7 MULTI-FRAME EMBEDDING: SUCCESS"
+    )
+
+    print(
+        "Video → Frames → DWT + DCT → "
+        "Embedding completed"
+    )
+
+else:
+
+    print(
+        "\nDAY 7 MULTI-FRAME EMBEDDING: FAILED"
+    )
+
+    print(
+        f"Expected {len(DAY7_BITS)} bits, "
+        f"embedded {payload_position}"
+    )
