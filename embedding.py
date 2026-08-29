@@ -822,3 +822,478 @@ else:
     print(
         f"Received: {extracted_text}"
     )
+
+    # ============================================================
+# DAY 3 — INPUT TESTING
+# ============================================================
+#
+# Purpose:
+#     Test whether our working DWT + DCT pair-based
+#     steganography method works with different inputs.
+#
+# Tests:
+#     1. Short text
+#     2. Longer text
+#     3. 00000000
+#     4. 11111111
+#     5. Random binary
+#
+# Unlike Day 2, the number of coefficient pairs is generated
+# dynamically according to the number of bits in the payload.
+# ============================================================
+
+import random
+
+
+# ------------------------------------------------------------
+# 1. Test inputs
+# ------------------------------------------------------------
+
+TEST_CASES = [
+    ("Short text", "HI"),
+    ("Longer text", "HELLO WORLD"),
+    ("All zeros", "00000000"),
+    ("All ones", "11111111"),
+    (
+        "Random binary",
+        "".join(
+            str(random.randint(0, 1))
+            for _ in range(8)
+        )
+    ),
+]
+
+
+# ------------------------------------------------------------
+# 2. Function to convert input into binary
+# ------------------------------------------------------------
+#
+# Text:
+#     "HI"
+#     → 01001000 01001001
+#
+# Binary input:
+#     "00000000"
+#     → remains 00000000
+#
+# We distinguish the two types so that binary strings
+# are not converted into ASCII characters.
+
+def convert_to_bits(data):
+
+    # If every character is 0 or 1, treat the input
+    # directly as a binary sequence.
+    if all(character in "01" for character in data):
+
+        return [
+            int(character)
+            for character in data
+        ]
+
+    # Otherwise treat the input as normal text and
+    # convert each character into 8-bit ASCII.
+    bits = []
+
+    for character in data:
+
+        bits.extend(
+            int(bit)
+            for bit in f"{ord(character):08b}"
+        )
+
+    return bits
+
+
+# ------------------------------------------------------------
+# 3. Function to generate coefficient pairs
+# ------------------------------------------------------------
+#
+# One coefficient pair stores one bit.
+#
+# Therefore:
+#
+#     16 bits → 16 pairs
+#     88 bits → 88 pairs
+#     etc.
+#
+# The DCT matrix is 360 × 640 for our current frame,
+# so there is plenty of room for these small tests.
+
+def generate_pairs(number_of_bits):
+
+    pairs = []
+
+    # Start away from the DC coefficient at (0,0).
+    row = 1
+
+    while len(pairs) < number_of_bits:
+
+        # Use horizontal neighboring coefficients.
+        for col in range(1, 639, 2):
+
+            if len(pairs) >= number_of_bits:
+                break
+
+            pairs.append(
+                (
+                    (row, col),
+                    (row, col + 1)
+                )
+            )
+
+        row += 1
+
+        # Prevent accidentally exceeding the DCT matrix.
+        if row >= 360:
+
+            raise ValueError(
+                "Not enough DCT coefficient pairs "
+                "for this payload."
+            )
+
+    return pairs
+
+
+# ------------------------------------------------------------
+# 4. Function to embed one test payload
+# ------------------------------------------------------------
+
+def embed_payload(bits, output_file):
+
+    # Load the original frame.
+    image = cv2.imread(
+        INPUT,
+        cv2.IMREAD_GRAYSCALE
+    )
+
+    if image is None:
+
+        raise FileNotFoundError(
+            f"Could not load {INPUT}"
+        )
+
+    # Apply DWT.
+    LL, (LH, HL, HH) = pywt.dwt2(
+        image.astype(np.float32),
+        "haar"
+    )
+
+    # Apply DCT to the HH sub-band.
+    dct_hh = cv2.dct(HH)
+
+    # Generate exactly as many pairs as we need.
+    pairs = generate_pairs(len(bits))
+
+    # Embed every bit.
+    for bit, pair in zip(bits, pairs):
+
+        (row_a, col_a), (row_b, col_b) = pair
+
+        coefficient_a = dct_hh[row_a, col_a]
+        coefficient_b = dct_hh[row_b, col_b]
+
+        # Centre the pair around its original average.
+        centre = (
+            coefficient_a + coefficient_b
+        ) / 2.0
+
+        # Same pair-based method that successfully
+        # passed Day 1 and Day 2.
+        if bit == 1:
+
+            dct_hh[row_a, col_a] = (
+                centre + 25.0
+            )
+
+            dct_hh[row_b, col_b] = (
+                centre - 25.0
+            )
+
+        else:
+
+            dct_hh[row_a, col_a] = (
+                centre - 25.0
+            )
+
+            dct_hh[row_b, col_b] = (
+                centre + 25.0
+            )
+
+    # Inverse DCT.
+    modified_HH = cv2.idct(dct_hh)
+
+    # Inverse DWT.
+    reconstructed = pywt.idwt2(
+        (
+            LL,
+            (
+                LH,
+                HL,
+                modified_HH
+            )
+        ),
+        "haar"
+    )
+
+    # Convert to a valid image.
+    reconstructed = np.clip(
+        reconstructed,
+        0,
+        255
+    ).astype(np.uint8)
+
+    # Save the stego image.
+    if not cv2.imwrite(
+        output_file,
+        reconstructed
+    ):
+
+        raise IOError(
+            f"Could not save {output_file}"
+        )
+
+    return pairs
+
+
+# ------------------------------------------------------------
+# 5. Function to extract one test payload
+# ------------------------------------------------------------
+
+def extract_payload(output_file, pairs):
+
+    # Load the embedded image.
+    image = cv2.imread(
+        output_file,
+        cv2.IMREAD_GRAYSCALE
+    )
+
+    if image is None:
+
+        raise FileNotFoundError(
+            f"Could not load {output_file}"
+        )
+
+    # Apply DWT.
+    _, (_, _, HH) = pywt.dwt2(
+        image.astype(np.float32),
+        "haar"
+    )
+
+    # Apply DCT.
+    dct_hh = cv2.dct(HH)
+
+    extracted_bits = []
+
+    # Read each coefficient pair.
+    for pair in pairs:
+
+        (row_a, col_a), (row_b, col_b) = pair
+
+        coefficient_a = dct_hh[
+            row_a,
+            col_a
+        ]
+
+        coefficient_b = dct_hh[
+            row_b,
+            col_b
+        ]
+
+        # Same rule used during embedding:
+        #
+        #     A > B → 1
+        #     A < B → 0
+        extracted_bit = (
+            1
+            if coefficient_a > coefficient_b
+            else 0
+        )
+
+        extracted_bits.append(
+            extracted_bit
+        )
+
+    return extracted_bits
+
+
+# ------------------------------------------------------------
+# 6. Function to convert bits back to text
+# ------------------------------------------------------------
+
+def bits_to_text(bits):
+
+    text = ""
+
+    # Process eight bits at a time.
+    for position in range(
+        0,
+        len(bits),
+        8
+    ):
+
+        byte_bits = bits[
+            position:position + 8
+        ]
+
+        # A text character must contain exactly 8 bits.
+        if len(byte_bits) != 8:
+
+            return None
+
+        value = 0
+
+        for bit in byte_bits:
+
+            value = (
+                (value << 1) | bit
+            )
+
+        text += chr(value)
+
+    return text
+
+
+# ============================================================
+# 7. Run all Day 3 tests
+# ============================================================
+
+print("\n\n============================================================")
+print("DAY 3 — INPUT TESTING")
+print("============================================================")
+
+
+day3_results = []
+
+
+for test_name, test_input in TEST_CASES:
+
+    print("\n------------------------------------------------------------")
+    print(f"TEST: {test_name}")
+    print(f"INPUT: {test_input}")
+    print("------------------------------------------------------------")
+
+    # Convert the input into bits.
+    original_bits = convert_to_bits(
+        test_input
+    )
+
+    print(
+        "Number of bits:",
+        len(original_bits)
+    )
+
+    print(
+        "Binary:",
+        "".join(
+            str(bit)
+            for bit in original_bits
+        )
+    )
+
+    # Create a separate output image for this test.
+    safe_name = test_name.lower().replace(
+        " ",
+        "_"
+    )
+
+    output_file = (
+        f"output/day3_{safe_name}.png"
+    )
+
+    # Embed the payload.
+    pairs = embed_payload(
+        original_bits,
+        output_file
+    )
+
+    # Extract the payload.
+    extracted_bits = extract_payload(
+        output_file,
+        pairs
+    )
+
+    # Compare original and extracted bits.
+    bits_match = (
+        original_bits == extracted_bits
+    )
+
+    # Display extracted binary.
+    print(
+        "Extracted:",
+        "".join(
+            str(bit)
+            for bit in extracted_bits
+        )
+    )
+
+    print(
+        "Bits match:",
+        bits_match
+    )
+
+    # Handle text tests separately from raw binary tests.
+    if not all(
+        character in "01"
+        for character in test_input
+    ):
+
+        extracted_value = bits_to_text(
+            extracted_bits
+        )
+
+        print(
+            "Extracted text:",
+            extracted_value
+        )
+
+        test_passed = (
+            extracted_value == test_input
+        )
+
+    else:
+
+        extracted_value = "".join(
+            str(bit)
+            for bit in extracted_bits
+        )
+
+        test_passed = (
+            extracted_value == test_input
+        )
+
+    print(
+        "TEST RESULT:",
+        "PASS" if test_passed else "FAIL"
+    )
+
+    day3_results.append(
+        test_passed
+    )
+
+
+# ============================================================
+# 8. Day 3 summary
+# ============================================================
+
+print("\n\n============================================================")
+print("DAY 3 — FINAL SUMMARY")
+print("============================================================")
+
+for (test_name, _), result in zip(
+    TEST_CASES,
+    day3_results
+):
+
+    print(
+        f"{test_name}: "
+        f"{'PASS' if result else 'FAIL'}"
+    )
+
+
+if all(day3_results):
+
+    print("\nDAY 3: ALL INPUT TESTS PASSED")
+
+else:
+
+    print("\nDAY 3: SOME INPUT TESTS FAILED")
