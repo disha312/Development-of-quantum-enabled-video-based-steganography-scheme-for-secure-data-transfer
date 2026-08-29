@@ -1002,21 +1002,21 @@ def embed_payload(bits, output_file):
         if bit == 1:
 
             dct_hh[row_a, col_a] = (
-                centre + 25.0
+                centre + 100.0
             )
 
             dct_hh[row_b, col_b] = (
-                centre - 25.0
+                centre - 100.0
             )
 
         else:
 
             dct_hh[row_a, col_a] = (
-                centre - 25.0
+                centre - 100.0
             )
 
             dct_hh[row_b, col_b] = (
-                centre + 25.0
+                centre + 100.0
             )
 
     # Inverse DCT.
@@ -1956,7 +1956,7 @@ print("DAY 7 — EMBED ACROSS VIDEO FRAMES")
 print("============================================================")
 
 DAY7_VIDEO_INPUT = "input/MyTest_Video.mp4"
-DAY7_VIDEO_OUTPUT = "output/day7_embedded_video.mp4"
+DAY7_VIDEO_OUTPUT = "output/day7_embedded_video.avi"
 
 DAY7_TEXT = "HELLO WORLD"
 DAY7_BITS = convert_to_bits(DAY7_TEXT)
@@ -2004,9 +2004,8 @@ print(f"Total frames: {total_frames}")
 # ------------------------------------------------------------
 
 fourcc = cv2.VideoWriter_fourcc(
-    *"mp4v"
+    *"FFV1"
 )
-
 day7_writer = cv2.VideoWriter(
     DAY7_VIDEO_OUTPUT,
     fourcc,
@@ -2260,4 +2259,221 @@ else:
     print(
         f"Expected {len(DAY7_BITS)} bits, "
         f"embedded {payload_position}"
+    )
+
+    # ============================================================
+# DAY 9 — VIDEO EXTRACTION
+# ============================================================
+
+print("\n\n============================================================")
+print("DAY 9 — VIDEO EXTRACTION")
+print("============================================================")
+
+DAY9_VIDEO_INPUT = "output/day7_embedded_video.avi"
+
+DAY9_EXPECTED_TEXT = "HELLO WORLD"
+DAY9_EXPECTED_BITS = convert_to_bits(DAY9_EXPECTED_TEXT)
+
+FRAME_INTERVAL = 10
+BITS_PER_FRAME = 40
+
+print(f"Stego video: {DAY9_VIDEO_INPUT}")
+print(f"Expected text: {DAY9_EXPECTED_TEXT}")
+print(f"Expected bits: {len(DAY9_EXPECTED_BITS)}")
+print(f"Frame interval: every {FRAME_INTERVAL} frames")
+
+
+# ------------------------------------------------------------
+# 1. Open stego video
+# ------------------------------------------------------------
+
+day9_cap = cv2.VideoCapture(
+    DAY9_VIDEO_INPUT
+)
+
+if not day9_cap.isOpened():
+
+    raise IOError(
+        f"Could not open stego video: "
+        f"{DAY9_VIDEO_INPUT}"
+    )
+
+
+total_frames = int(
+    day9_cap.get(cv2.CAP_PROP_FRAME_COUNT)
+)
+
+print(f"Total frames: {total_frames}")
+
+
+# ------------------------------------------------------------
+# 2. Extract payload from selected frames
+# ------------------------------------------------------------
+
+extracted_bits = []
+
+frame_number = 0
+
+while True:
+
+    success, frame = day9_cap.read()
+
+    if not success:
+        break
+
+    # Only inspect the same frames used
+    # during embedding.
+    if (
+        frame_number % FRAME_INTERVAL == 0
+        and len(extracted_bits)
+        < len(DAY9_EXPECTED_BITS)
+    ):
+
+        remaining_bits = (
+            len(DAY9_EXPECTED_BITS)
+            - len(extracted_bits)
+        )
+
+        chunk_size = min(
+            BITS_PER_FRAME,
+            remaining_bits
+        )
+
+        print(
+            f"Frame {frame_number}: "
+            f"extracting {chunk_size} bits"
+        )
+
+        # Convert frame to grayscale.
+        gray_frame = cv2.cvtColor(
+            frame,
+            cv2.COLOR_BGR2GRAY
+        )
+
+        # DWT.
+        _, (
+            _,
+            _,
+            HH
+        ) = pywt.dwt2(
+            gray_frame.astype(
+                np.float32
+            ),
+            "haar"
+        )
+
+        # DCT.
+        dct_hh = cv2.dct(HH)
+
+        # Generate the exact same coefficient
+        # pairs used during embedding.
+        pairs = generate_pairs(
+            chunk_size
+        )
+
+        # Extract bits.
+        for pair in pairs:
+
+            (row_a, col_a), (
+                row_b,
+                col_b
+            ) = pair
+
+            coefficient_a = (
+                dct_hh[
+                    row_a,
+                    col_a
+                ]
+            )
+
+            coefficient_b = (
+                dct_hh[
+                    row_b,
+                    col_b
+                ]
+            )
+
+            bit = (
+                1
+                if coefficient_a > coefficient_b
+                else 0
+            )
+
+            extracted_bits.append(bit)
+
+    frame_number += 1
+
+
+day9_cap.release()
+
+
+# ------------------------------------------------------------
+# 3. Convert extracted bits to text
+# ------------------------------------------------------------
+
+extracted_bits = extracted_bits[
+    :len(DAY9_EXPECTED_BITS)
+]
+
+extracted_text = bits_to_text(
+    extracted_bits
+)
+
+
+# ------------------------------------------------------------
+# 4. Verify exact recovery
+# ------------------------------------------------------------
+
+print("\n--- DAY 9 FINAL RESULT ---")
+
+print(
+    f"Expected text:  {DAY9_EXPECTED_TEXT}"
+)
+
+print(
+    f"Extracted text: {extracted_text}"
+)
+
+print(
+    f"Expected bits:  "
+    f"{''.join(map(str, DAY9_EXPECTED_BITS))}"
+)
+
+print(
+    f"Extracted bits: "
+    f"{''.join(map(str, extracted_bits))}"
+)
+
+
+if extracted_bits == DAY9_EXPECTED_BITS:
+
+    print(
+        "\nBinary extraction: SUCCESS"
+    )
+
+else:
+
+    print(
+        "\nBinary extraction: FAILED"
+    )
+
+
+if extracted_text == DAY9_EXPECTED_TEXT:
+
+    print(
+        "Text extraction: SUCCESS"
+    )
+
+    print(
+        "\nDAY 9 VIDEO EXTRACTION: SUCCESS"
+    )
+
+else:
+
+    print(
+        "Text extraction: FAILED"
+    )
+
+    print(
+        "\nDAY 9 VIDEO EXTRACTION: FAILED"
     )
