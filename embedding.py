@@ -1297,3 +1297,357 @@ if all(day3_results):
 else:
 
     print("\nDAY 3: SOME INPUT TESTS FAILED")
+
+    # ============================================================
+# DAY 4 — SINGLE-FRAME PIPELINE TEST
+# ============================================================
+
+print("\n\n============================================================")
+print("DAY 4 — SINGLE-FRAME PIPELINE")
+print("============================================================")
+
+DAY4_TEXT = "HELLO"
+
+print(f"Input frame: {INPUT}")
+print(f"Secret text: {DAY4_TEXT}")
+
+
+# ------------------------------------------------------------
+# 1. Read input frame
+# ------------------------------------------------------------
+
+day4_image = cv2.imread(
+    INPUT,
+    cv2.IMREAD_GRAYSCALE
+)
+
+if day4_image is None:
+    raise FileNotFoundError(
+        f"Could not load input frame: {INPUT}"
+    )
+
+print(f"Original frame shape: {day4_image.shape}")
+
+
+# ------------------------------------------------------------
+# 2. Convert secret text → binary
+# ------------------------------------------------------------
+
+day4_bits = convert_to_bits(DAY4_TEXT)
+
+print(
+    "Secret binary:",
+    "".join(str(bit) for bit in day4_bits)
+)
+
+print(f"Total bits: {len(day4_bits)}")
+
+
+# ------------------------------------------------------------
+# 3. DWT
+# ------------------------------------------------------------
+
+day4_LL, (
+    day4_LH,
+    day4_HL,
+    day4_HH
+) = pywt.dwt2(
+    day4_image.astype(np.float32),
+    "haar"
+)
+
+print(
+    "DWT completed"
+)
+
+print(
+    f"HH shape: {day4_HH.shape}"
+)
+
+
+# ------------------------------------------------------------
+# 4. DCT
+# ------------------------------------------------------------
+
+day4_dct_hh = cv2.dct(day4_HH)
+
+print(
+    "DCT completed"
+)
+
+
+# ------------------------------------------------------------
+# 5. Generate coefficient pairs
+# ------------------------------------------------------------
+
+day4_pairs = generate_pairs(
+    len(day4_bits)
+)
+
+print(
+    f"Coefficient pairs selected: "
+    f"{len(day4_pairs)}"
+)
+
+
+# ------------------------------------------------------------
+# 6. Embed payload
+# ------------------------------------------------------------
+
+for bit, pair in zip(
+    day4_bits,
+    day4_pairs
+):
+
+    (row_a, col_a), (
+        row_b,
+        col_b
+    ) = pair
+
+    coefficient_a = (
+        day4_dct_hh[
+            row_a,
+            col_a
+        ]
+    )
+
+    coefficient_b = (
+        day4_dct_hh[
+            row_b,
+            col_b
+        ]
+    )
+
+    centre = (
+        coefficient_a +
+        coefficient_b
+    ) / 2.0
+
+    if bit == 1:
+
+        day4_dct_hh[
+            row_a,
+            col_a
+        ] = centre + 25.0
+
+        day4_dct_hh[
+            row_b,
+            col_b
+        ] = centre - 25.0
+
+    else:
+
+        day4_dct_hh[
+            row_a,
+            col_a
+        ] = centre - 25.0
+
+        day4_dct_hh[
+            row_b,
+            col_b
+        ] = centre + 25.0
+
+
+print(
+    "Payload embedding completed"
+)
+
+
+# ------------------------------------------------------------
+# 7. Inverse DCT
+# ------------------------------------------------------------
+
+day4_modified_HH = cv2.idct(
+    day4_dct_hh
+)
+
+print(
+    "Inverse DCT completed"
+)
+
+
+# ------------------------------------------------------------
+# 8. Inverse DWT
+# ------------------------------------------------------------
+
+day4_reconstructed = pywt.idwt2(
+    (
+        day4_LL,
+        (
+            day4_LH,
+            day4_HL,
+            day4_modified_HH
+        )
+    ),
+    "haar"
+)
+
+
+day4_reconstructed = np.clip(
+    day4_reconstructed,
+    0,
+    255
+).astype(np.uint8)
+
+
+print(
+    "Inverse DWT completed"
+)
+
+
+# ------------------------------------------------------------
+# 9. Save stego frame
+# ------------------------------------------------------------
+
+DAY4_OUTPUT = (
+    "output/day4_single_frame.png"
+)
+
+if not cv2.imwrite(
+    DAY4_OUTPUT,
+    day4_reconstructed
+):
+
+    raise IOError(
+        f"Could not save {DAY4_OUTPUT}"
+    )
+
+
+print(
+    f"Stego frame saved to: {DAY4_OUTPUT}"
+)
+
+
+# ------------------------------------------------------------
+# 10. Extract from the resulting frame
+# ------------------------------------------------------------
+
+day4_extracted_image = cv2.imread(
+    DAY4_OUTPUT,
+    cv2.IMREAD_GRAYSCALE
+)
+
+if day4_extracted_image is None:
+    raise FileNotFoundError(
+        f"Could not load {DAY4_OUTPUT}"
+    )
+
+
+_, (
+    _,
+    _,
+    day4_extracted_HH
+) = pywt.dwt2(
+    day4_extracted_image.astype(
+        np.float32
+    ),
+    "haar"
+)
+
+
+day4_extracted_dct = cv2.dct(
+    day4_extracted_HH
+)
+
+
+day4_extracted_bits = []
+
+for pair in day4_pairs:
+
+    (row_a, col_a), (
+        row_b,
+        col_b
+    ) = pair
+
+    coefficient_a = (
+        day4_extracted_dct[
+            row_a,
+            col_a
+        ]
+    )
+
+    coefficient_b = (
+        day4_extracted_dct[
+            row_b,
+            col_b
+        ]
+    )
+
+    extracted_bit = (
+        1
+        if coefficient_a > coefficient_b
+        else 0
+    )
+
+    day4_extracted_bits.append(
+        extracted_bit
+    )
+
+
+# ------------------------------------------------------------
+# 11. Convert extracted bits → text
+# ------------------------------------------------------------
+
+day4_extracted_text = bits_to_text(
+    day4_extracted_bits
+)
+
+
+# ------------------------------------------------------------
+# 12. Final result
+# ------------------------------------------------------------
+
+print("\n--- DAY 4 FINAL RESULT ---")
+
+print(
+    f"Original text:  {DAY4_TEXT}"
+)
+
+print(
+    "Original binary:",
+    "".join(
+        str(bit)
+        for bit in day4_bits
+    )
+)
+
+print(
+    f"Extracted text: {day4_extracted_text}"
+)
+
+print(
+    "Extracted binary:",
+    "".join(
+        str(bit)
+        for bit in day4_extracted_bits
+    )
+)
+
+
+if (
+    day4_extracted_text ==
+    DAY4_TEXT
+):
+
+    print(
+        "\nDAY 4 SINGLE-FRAME PIPELINE: SUCCESS"
+    )
+
+    print(
+        "Input → DWT → DCT → Embed → "
+        "Inverse DCT → Inverse DWT → Extract → HELLO"
+    )
+
+else:
+
+    print(
+        "\nDAY 4 SINGLE-FRAME PIPELINE: FAILED"
+    )
+
+    print(
+        f"Expected: {DAY4_TEXT}"
+    )
+
+    print(
+        f"Got:      {day4_extracted_text}"
+    )
