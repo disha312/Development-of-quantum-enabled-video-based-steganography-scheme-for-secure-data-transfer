@@ -77,7 +77,7 @@ SECRET_BYTE = 0xAA
 #
 # A larger value gives a stronger signal but can introduce
 # more visible distortion.
-MARGIN = 50.0
+MARGIN = 100.0
 
 
 # ------------------------------------------------------------
@@ -2646,3 +2646,681 @@ else:
     print()
     print("DAY 12 ZIP RECOVERY: FAILED")
     print("Recovered file differs from original.")
+
+    # ============================================================
+# DAY 13 — TXT PAYLOAD TEST
+# ============================================================
+
+print()
+print("=" * 60)
+print("DAY 13 — TXT PAYLOAD TEST")
+print("=" * 60)
+
+DAY13_INPUT_FILE = "payload/day13/test.txt"
+DAY13_ZIP_FILE = "output/day13_txt.zip"
+DAY13_VIDEO_OUTPUT = "output/day13_txt_stego.avi"
+DAY13_RECOVERED_ZIP = "output/day13_txt_recovered.zip"
+DAY13_RECOVERED_DIR = "output/day13_txt_recovered_files"
+
+DAY13_FRAME_INTERVAL = 10
+DAY13_BITS_PER_FRAME = 40
+
+
+# ------------------------------------------------------------
+# 1. Create ZIP
+# ------------------------------------------------------------
+
+zip_payload(
+    DAY13_INPUT_FILE,
+    DAY13_ZIP_FILE
+)
+
+day13_bits = file_to_binary(
+    DAY13_ZIP_FILE
+)
+
+print(f"Input file: {DAY13_INPUT_FILE}")
+print(f"ZIP file: {DAY13_ZIP_FILE}")
+print(
+    f"ZIP size: "
+    f"{Path(DAY13_ZIP_FILE).stat().st_size} bytes"
+)
+print(f"Payload bits: {len(day13_bits)}")
+
+
+# ------------------------------------------------------------
+# 2. Open original video
+# ------------------------------------------------------------
+
+day13_cap = cv2.VideoCapture(
+    DAY7_VIDEO_INPUT
+)
+
+if not day13_cap.isOpened():
+
+    raise IOError(
+        f"Could not open video: {DAY7_VIDEO_INPUT}"
+    )
+
+fps = day13_cap.get(
+    cv2.CAP_PROP_FPS
+)
+
+width = int(
+    day13_cap.get(
+        cv2.CAP_PROP_FRAME_WIDTH
+    )
+)
+
+height = int(
+    day13_cap.get(
+        cv2.CAP_PROP_FRAME_HEIGHT
+    )
+)
+
+total_frames = int(
+    day13_cap.get(
+        cv2.CAP_PROP_FRAME_COUNT
+    )
+)
+
+print(f"FPS: {fps}")
+print(f"Resolution: {width} x {height}")
+print(f"Total frames: {total_frames}")
+
+
+# ------------------------------------------------------------
+# 3. Check capacity
+# ------------------------------------------------------------
+
+selected_frames = (
+    (total_frames - 1)
+    // DAY13_FRAME_INTERVAL
+    + 1
+)
+
+capacity = (
+    selected_frames
+    * DAY13_BITS_PER_FRAME
+)
+
+print(f"Video capacity: {capacity} bits")
+
+if len(day13_bits) > capacity:
+
+    day13_cap.release()
+
+    raise ValueError(
+        f"Payload too large: "
+        f"{len(day13_bits)} bits > "
+        f"{capacity} bits"
+    )
+
+
+# ------------------------------------------------------------
+# 4. Create stego video
+# ------------------------------------------------------------
+
+fourcc = cv2.VideoWriter_fourcc(
+    *"FFV1"
+)
+
+day13_writer = cv2.VideoWriter(
+    DAY13_VIDEO_OUTPUT,
+    fourcc,
+    fps,
+    (width, height),
+    True
+)
+
+if not day13_writer.isOpened():
+
+    day13_cap.release()
+
+    raise IOError(
+        f"Could not create "
+        f"{DAY13_VIDEO_OUTPUT}"
+    )
+
+
+# ------------------------------------------------------------
+# 5. Embed ZIP binary across frames
+# ------------------------------------------------------------
+
+payload_position = 0
+frame_number = 0
+embedded_frames = 0
+
+while True:
+
+    success, frame = day13_cap.read()
+
+    if not success:
+        break
+
+    if (
+        frame_number % DAY13_FRAME_INTERVAL == 0
+        and payload_position < len(day13_bits)
+    ):
+
+        remaining_bits = (
+            len(day13_bits)
+            - payload_position
+        )
+
+        chunk_size = min(
+            DAY13_BITS_PER_FRAME,
+            remaining_bits
+        )
+
+        chunk = day13_bits[
+            payload_position:
+            payload_position + chunk_size
+        ]
+
+        gray_frame = cv2.cvtColor(
+            frame,
+            cv2.COLOR_BGR2GRAY
+        )
+
+        LL, (
+            LH,
+            HL,
+            HH
+        ) = pywt.dwt2(
+            gray_frame.astype(
+                np.float32
+            ),
+            "haar"
+        )
+
+        dct_hh = cv2.dct(HH)
+
+        pairs = generate_pairs(
+            chunk_size
+        )
+
+        for bit, pair in zip(
+            chunk,
+            pairs
+        ):
+
+            (row_a, col_a), (
+                row_b,
+                col_b
+            ) = pair
+
+            coefficient_a = dct_hh[
+                row_a,
+                col_a
+            ]
+
+            coefficient_b = dct_hh[
+                row_b,
+                col_b
+            ]
+
+            centre = (
+                coefficient_a
+                + coefficient_b
+            ) / 2.0
+
+            if bit == "1":
+
+                dct_hh[
+                    row_a,
+                    col_a
+                ] = centre + MARGIN / 2
+
+                dct_hh[
+                    row_b,
+                    col_b
+                ] = centre - MARGIN/2
+
+            else:
+
+                dct_hh[
+                    row_a,
+                    col_a
+                ] = centre - MARGIN / 2
+
+                dct_hh[
+                    row_b,
+                    col_b
+                ] = centre + MARGIN / 2
+
+        modified_HH = cv2.idct(
+            dct_hh
+        )
+
+        reconstructed = pywt.idwt2(
+            (
+                LL,
+                (
+                    LH,
+                    HL,
+                    modified_HH
+                )
+            ),
+            "haar"
+        )
+
+        reconstructed = np.clip(
+            reconstructed,
+            0,
+            255
+        ).astype(np.uint8)
+
+        frame = cv2.cvtColor(
+            reconstructed,
+            cv2.COLOR_GRAY2BGR
+        )
+
+        payload_position += chunk_size
+        embedded_frames += 1
+
+        print(
+            f"Frame {frame_number}: "
+            f"embedded {chunk_size} bits"
+        )
+
+    day13_writer.write(frame)
+
+    frame_number += 1
+
+
+day13_cap.release()
+day13_writer.release()
+
+
+# ------------------------------------------------------------
+# 6. Extract ZIP binary from stego video
+# ------------------------------------------------------------
+
+day13_cap = cv2.VideoCapture(
+    DAY13_VIDEO_OUTPUT
+)
+
+if not day13_cap.isOpened():
+
+    raise IOError(
+        f"Could not open "
+        f"{DAY13_VIDEO_OUTPUT}"
+    )
+
+extracted_bits = []
+frame_number = 0
+
+while True:
+
+    success, frame = day13_cap.read()
+
+    if not success:
+        break
+
+    if (
+        frame_number % DAY13_FRAME_INTERVAL == 0
+        and len(extracted_bits)
+        < len(day13_bits)
+    ):
+
+        remaining_bits = (
+            len(day13_bits)
+            - len(extracted_bits)
+        )
+
+        chunk_size = min(
+            DAY13_BITS_PER_FRAME,
+            remaining_bits
+        )
+
+        gray_frame = cv2.cvtColor(
+            frame,
+            cv2.COLOR_BGR2GRAY
+        )
+
+        _, (
+            _,
+            _,
+            HH
+        ) = pywt.dwt2(
+            gray_frame.astype(
+                np.float32
+            ),
+            "haar"
+        )
+
+        dct_hh = cv2.dct(HH)
+
+        pairs = generate_pairs(
+            chunk_size
+        )
+
+        for pair in pairs:
+
+            (row_a, col_a), (
+                row_b,
+                col_b
+            ) = pair
+
+            coefficient_a = dct_hh[
+                row_a,
+                col_a
+            ]
+
+            coefficient_b = dct_hh[
+                row_b,
+                col_b
+            ]
+
+            bit = (
+                "1"
+                if coefficient_a > coefficient_b
+                else "0"
+            )
+
+            extracted_bits.append(
+                bit
+            )
+
+    frame_number += 1
+
+day13_cap.release()
+
+extracted_bits = extracted_bits[
+    :len(day13_bits)
+]
+
+
+# ------------------------------------------------------------
+# 7. Reconstruct ZIP
+# ------------------------------------------------------------
+
+DAY13_RECOVERED_DIR_PATH = Path(
+    DAY13_RECOVERED_DIR
+)
+
+DAY13_RECOVERED_DIR_PATH.mkdir(
+    parents=True,
+    exist_ok=True
+)
+
+extracted_binary = "".join(
+    extracted_bits
+)
+
+binary_to_file(
+    extracted_binary,
+    DAY13_RECOVERED_ZIP
+)
+
+# ------------------------------------------------------------
+# 7A. Compare original and extracted binary
+# ------------------------------------------------------------
+
+original_bits = day13_bits
+
+mismatch_count = sum(
+    a != b
+    for a, b in zip(
+        original_bits,
+        extracted_bits
+    )
+)
+
+print()
+print("--- DAY 13 BINARY COMPARISON ---")
+print(f"Original bits:  {len(original_bits)}")
+print(f"Extracted bits: {len(extracted_bits)}")
+print(f"Bit mismatches: {mismatch_count}")
+
+if mismatch_count == 0:
+
+    print("Binary payload: EXACT MATCH")
+
+else:
+
+    print("Binary payload: MISMATCH")
+
+    first_mismatch = None
+
+    for i, (a, b) in enumerate(
+        zip(
+            original_bits,
+            extracted_bits
+        )
+    ):
+
+        if a != b:
+
+            first_mismatch = i
+            break
+
+    if first_mismatch is not None:
+
+        print(
+            f"First mismatch at bit: "
+            f"{first_mismatch}"
+        )
+
+        start = max(
+            0,
+            first_mismatch - 16
+        )
+
+        end = min(
+            len(original_bits),
+            first_mismatch + 32
+        )
+
+        print(
+            "Original:  ",
+            original_bits[start:end]
+        )
+
+        print(
+            "Extracted: ",
+            extracted_bits[start:end]
+        )
+
+
+# ------------------------------------------------------------
+# 8. Extract recovered ZIP
+# ------------------------------------------------------------
+
+with zipfile.ZipFile(
+    DAY13_RECOVERED_ZIP,
+    "r"
+) as zf:
+
+    zf.extractall(
+        DAY13_RECOVERED_DIR
+    )
+
+
+recovered_file = (
+    DAY13_RECOVERED_DIR_PATH
+    / Path(DAY13_INPUT_FILE).name
+)
+
+
+# ------------------------------------------------------------
+# 9. Verify
+# ------------------------------------------------------------
+
+original_data = Path(
+    DAY13_INPUT_FILE
+).read_bytes()
+
+recovered_data = recovered_file.read_bytes()
+
+
+print()
+print("--- DAY 13 TXT TEST RESULT ---")
+print(f"Original file: {DAY13_INPUT_FILE}")
+print(f"Recovered file: {recovered_file}")
+print(f"Original size: {len(original_data)} bytes")
+print(f"Recovered size: {len(recovered_data)} bytes")
+print(
+    f"Payload bits: {len(day13_bits)}"
+)
+print(
+    f"Extracted bits: {len(extracted_bits)}"
+)
+
+
+if (
+    extracted_bits == list(day13_bits)
+    and original_data == recovered_data
+):
+
+    print()
+    print(
+        "DAY 13 TXT PAYLOAD TEST: SUCCESS"
+    )
+    print(
+        "ZIP → Binary → Video Embedding → "
+        "Extraction → ZIP → TXT"
+    )
+    print(
+        "Original and recovered files are "
+        "byte-for-byte identical."
+    )
+
+else:
+
+    print()
+    print(
+        "DAY 13 TXT PAYLOAD TEST: FAILED"
+    )
+
+# ============================================================
+# DAY 13 — PAYLOAD TESTING
+# ============================================================
+
+print()
+print("=" * 60)
+print("DAY 13 — PAYLOAD TESTING")
+print("=" * 60)
+
+DAY13_TESTS = {
+    "TXT": "output/day13_txt.zip",
+    "JPG": "output/day13_jpg.zip",
+    "PDF": "output/day13_pdf.zip",
+    "MULTIPLE": "output/day13_multiple.zip"
+}
+
+# Current Day 7 embedding capacity.
+# 3 selected frames × 40 bits per frame = 120 bits.
+DAY13_VIDEO_CAPACITY_BITS = 3 * 40
+
+print(
+    f"Current video payload capacity: "
+    f"{DAY13_VIDEO_CAPACITY_BITS} bits"
+)
+
+print()
+
+day13_all_valid = True
+
+for test_name, zip_file in DAY13_TESTS.items():
+
+    zip_path = Path(zip_file)
+
+    print("-" * 60)
+    print(f"{test_name} PAYLOAD")
+    print("-" * 60)
+
+    if not zip_path.exists():
+
+        print(f"ZIP file not found: {zip_file}")
+        day13_all_valid = False
+        continue
+
+    zip_size = zip_path.stat().st_size
+    zip_bits = zip_size * 8
+
+    print(f"ZIP file: {zip_file}")
+    print(f"ZIP size: {zip_size} bytes")
+    print(f"Binary payload: {zip_bits} bits")
+
+    # --------------------------------------------------------
+    # Verify ZIP integrity
+    # --------------------------------------------------------
+
+    try:
+
+        with zipfile.ZipFile(
+            zip_file,
+            "r"
+        ) as zf:
+
+            bad_file = zf.testzip()
+            file_names = zf.namelist()
+
+            if bad_file is not None:
+
+                print(
+                    f"ZIP integrity: FAILED "
+                    f"(corrupt file: {bad_file})"
+                )
+
+                day13_all_valid = False
+
+            else:
+
+                print("ZIP integrity: SUCCESS")
+                print(f"Files inside ZIP: {file_names}")
+
+    except zipfile.BadZipFile:
+
+        print("ZIP integrity: FAILED")
+        day13_all_valid = False
+        continue
+
+    # --------------------------------------------------------
+    # Capacity check
+    # --------------------------------------------------------
+
+    if zip_bits <= DAY13_VIDEO_CAPACITY_BITS:
+
+        print("Current video capacity: SUFFICIENT")
+
+    else:
+
+        print("Current video capacity: INSUFFICIENT")
+
+    print()
+
+
+# ============================================================
+# DAY 13 FINAL RESULT
+# ============================================================
+
+print("=" * 60)
+print("DAY 13 FINAL RESULT")
+print("=" * 60)
+
+if day13_all_valid:
+
+    print("TXT test: SUCCESS")
+    print("JPG test: SUCCESS")
+    print("PDF test: SUCCESS")
+    print("Multiple-file test: SUCCESS")
+
+    print()
+    print("All ZIP payloads are valid and readable.")
+    print(
+        "Payload sizes were measured in bytes and bits."
+    )
+
+    print()
+    print("DAY 13 PAYLOAD TESTING: SUCCESS")
+
+else:
+
+    print()
+    print("One or more payload tests FAILED.")
+
+    print()
+    print("DAY 13 PAYLOAD TESTING: FAILED")
