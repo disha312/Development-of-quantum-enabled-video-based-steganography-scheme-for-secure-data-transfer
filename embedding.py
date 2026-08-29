@@ -1651,3 +1651,219 @@ else:
     print(
         f"Got:      {day4_extracted_text}"
     )
+
+    # ============================================================
+# DAY 5 — SINGLE-FRAME EXTRACTION
+# ============================================================
+
+print("\n\n============================================================")
+print("DAY 5 — SINGLE-FRAME EXTRACTION")
+print("============================================================")
+
+DAY5_TEXT = "HELLO"
+
+print(f"Stego frame: {DAY4_OUTPUT}")
+print(f"Expected text: {DAY5_TEXT}")
+
+
+# ------------------------------------------------------------
+# 1. Convert original secret to bits
+# ------------------------------------------------------------
+
+day5_original_bits = convert_to_bits(
+    DAY5_TEXT
+)
+
+print(
+    "Expected binary:",
+    "".join(
+        str(bit)
+        for bit in day5_original_bits
+    )
+)
+
+
+# ------------------------------------------------------------
+# 2. Load the stego frame created by Day 4
+# ------------------------------------------------------------
+
+day5_stego_image = cv2.imread(
+    DAY4_OUTPUT,
+    cv2.IMREAD_GRAYSCALE
+)
+
+if day5_stego_image is None:
+
+    raise FileNotFoundError(
+        f"Could not load stego frame: {DAY4_OUTPUT}"
+    )
+
+print(
+    f"Stego frame shape: {day5_stego_image.shape}"
+)
+
+
+# ------------------------------------------------------------
+# 3. Apply DWT to stego frame
+# ------------------------------------------------------------
+
+day5_LL, (
+    day5_LH,
+    day5_HL,
+    day5_HH
+) = pywt.dwt2(
+    day5_stego_image.astype(np.float32),
+    "haar"
+)
+
+print("DWT extraction stage: SUCCESS")
+
+
+# ------------------------------------------------------------
+# 4. Apply DCT to HH sub-band
+# ------------------------------------------------------------
+
+day5_dct_hh = cv2.dct(
+    day5_HH
+)
+
+print("DCT extraction stage: SUCCESS")
+
+
+# ------------------------------------------------------------
+# 5. Use the same coefficient pairs
+# ------------------------------------------------------------
+
+day5_pairs = generate_pairs(
+    len(day5_original_bits)
+)
+
+print(
+    f"Coefficient pairs used: {len(day5_pairs)}"
+)
+
+
+# ------------------------------------------------------------
+# 6. Extract every bit
+# ------------------------------------------------------------
+
+day5_extracted_bits = []
+
+for pair in day5_pairs:
+
+    (row_a, col_a), (
+        row_b,
+        col_b
+    ) = pair
+
+    coefficient_a = (
+        day5_dct_hh[
+            row_a,
+            col_a
+        ]
+    )
+
+    coefficient_b = (
+        day5_dct_hh[
+            row_b,
+            col_b
+        ]
+    )
+
+    extracted_bit = (
+        1
+        if coefficient_a > coefficient_b
+        else 0
+    )
+
+    day5_extracted_bits.append(
+        extracted_bit
+    )
+
+
+# ------------------------------------------------------------
+# 7. Compare every bit
+# ------------------------------------------------------------
+
+print(
+    "Extracted binary:",
+    "".join(
+        str(bit)
+        for bit in day5_extracted_bits
+    )
+)
+
+bits_match = (
+    day5_original_bits ==
+    day5_extracted_bits
+)
+
+print(
+    f"Exact bit recovery: "
+    f"{'SUCCESS' if bits_match else 'FAILED'}"
+)
+
+
+# ------------------------------------------------------------
+# 8. Convert recovered bits back to text
+# ------------------------------------------------------------
+
+day5_extracted_text = bits_to_text(
+    day5_extracted_bits
+)
+
+print(
+    f"Recovered text: {day5_extracted_text}"
+)
+
+
+# ------------------------------------------------------------
+# 9. Final Day 5 verification
+# ------------------------------------------------------------
+
+print("\n--- DAY 5 FINAL RESULT ---")
+
+if (
+    bits_match
+    and
+    day5_extracted_text == DAY5_TEXT
+):
+
+    print(
+        "Original text: ",
+        DAY5_TEXT
+    )
+
+    print(
+        "Extracted text:",
+        day5_extracted_text
+    )
+
+    print(
+        "\nDAY 5 SINGLE-FRAME EXTRACTION: SUCCESS"
+    )
+
+    print(
+        "Exact recovery verified:"
+    )
+
+    print(
+        "HELLO → binary → "
+        "DWT → DCT → extract → binary → HELLO"
+    )
+
+else:
+
+    print(
+        "DAY 5 SINGLE-FRAME EXTRACTION: FAILED"
+    )
+
+    print(
+        "Expected:",
+        DAY5_TEXT
+    )
+
+    print(
+        "Extracted:",
+        day5_extracted_text
+    )
