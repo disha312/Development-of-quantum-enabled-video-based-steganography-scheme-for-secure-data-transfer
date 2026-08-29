@@ -3324,3 +3324,667 @@ else:
 
     print()
     print("DAY 13 PAYLOAD TESTING: FAILED")
+
+    
+# ============================================================
+# DAY 14 — SYSTEM EVALUATION
+# ============================================================
+
+import time
+import math
+
+try:
+    from skimage.metrics import structural_similarity as ssim
+except ImportError:
+    ssim = None
+
+
+print()
+print("=" * 60)
+print("DAY 14 — SYSTEM EVALUATION")
+print("=" * 60)
+
+
+# ------------------------------------------------------------
+# Configuration
+# ------------------------------------------------------------
+
+DAY14_INPUT_VIDEO = "input/MyTest_Video.mp4"
+DAY14_STEGO_VIDEO = "output/day13_txt_stego.avi"
+
+DAY14_PAYLOAD_BITS = len(day13_bits)
+
+DAY14_FRAME_INTERVAL = DAY13_FRAME_INTERVAL
+DAY14_BITS_PER_FRAME = DAY13_BITS_PER_FRAME
+
+
+# ------------------------------------------------------------
+# 1. Recovery Accuracy
+# ------------------------------------------------------------
+
+matching_bits = sum(
+    original == extracted
+    for original, extracted
+    in zip(day13_bits, extracted_bits)
+)
+
+total_bits = len(day13_bits)
+
+if total_bits > 0:
+
+    recovery_accuracy = (
+        matching_bits / total_bits
+    ) * 100
+
+else:
+
+    recovery_accuracy = 0.0
+
+
+print()
+print("Recovery Accuracy")
+print("-----------------")
+print(
+    f"Matching bits: "
+    f"{matching_bits}/{total_bits}"
+)
+
+print(
+    f"Recovery accuracy: "
+    f"{recovery_accuracy:.2f}%"
+)
+
+
+# ------------------------------------------------------------
+# 2. Embedding Capacity
+# ------------------------------------------------------------
+
+capacity_frames = (
+    (total_frames - 1)
+    // DAY14_FRAME_INTERVAL
+    + 1
+)
+
+embedding_capacity = (
+    capacity_frames
+    * DAY14_BITS_PER_FRAME
+)
+
+print()
+print("Embedding Capacity")
+print("-------------------")
+print(
+    f"Total video frames: "
+    f"{total_frames}"
+)
+
+print(
+    f"Selected frames: "
+    f"{capacity_frames}"
+)
+
+print(
+    f"Bits per frame: "
+    f"{DAY14_BITS_PER_FRAME}"
+)
+
+print(
+    f"Embedding capacity: "
+    f"{embedding_capacity} bits"
+)
+
+print(
+    f"Embedding capacity: "
+    f"{embedding_capacity / 8:.2f} bytes"
+)
+
+
+# ------------------------------------------------------------
+# 3. PSNR and MSE
+# ------------------------------------------------------------
+
+original_cap = cv2.VideoCapture(
+    DAY14_INPUT_VIDEO
+)
+
+stego_cap = cv2.VideoCapture(
+    DAY14_STEGO_VIDEO
+)
+
+if not original_cap.isOpened():
+
+    raise IOError(
+        f"Could not open original video: "
+        f"{DAY14_INPUT_VIDEO}"
+    )
+
+if not stego_cap.isOpened():
+
+    raise IOError(
+        f"Could not open stego video: "
+        f"{DAY14_STEGO_VIDEO}"
+    )
+
+
+total_mse = 0.0
+total_psnr = 0.0
+comparison_frames = 0
+
+
+while True:
+
+    original_success, original_frame = (
+        original_cap.read()
+    )
+
+    stego_success, stego_frame = (
+        stego_cap.read()
+    )
+
+    if not original_success or not stego_success:
+        break
+
+    original_gray = cv2.cvtColor(
+        original_frame,
+        cv2.COLOR_BGR2GRAY
+    )
+
+    stego_gray = cv2.cvtColor(
+        stego_frame,
+        cv2.COLOR_BGR2GRAY
+    )
+
+    mse = np.mean(
+        (
+            original_gray.astype(
+                np.float64
+            )
+            -
+            stego_gray.astype(
+                np.float64
+            )
+        ) ** 2
+    )
+
+    total_mse += mse
+
+    if mse == 0:
+
+        frame_psnr = float("inf")
+
+    else:
+
+        frame_psnr = (
+            10
+            * math.log10(
+                (255.0 ** 2) / mse
+            )
+        )
+
+    total_psnr += frame_psnr
+    comparison_frames += 1
+
+
+original_cap.release()
+stego_cap.release()
+
+
+if comparison_frames > 0:
+
+    average_mse = (
+        total_mse
+        / comparison_frames
+    )
+
+    average_psnr = (
+        total_psnr
+        / comparison_frames
+    )
+
+else:
+
+    average_mse = 0.0
+    average_psnr = 0.0
+
+
+print()
+print("Video Quality")
+print("-------------")
+print(
+    f"Compared frames: "
+    f"{comparison_frames}"
+)
+
+print(
+    f"Average MSE: "
+    f"{average_mse:.6f}"
+)
+
+print(
+    f"Average PSNR: "
+    f"{average_psnr:.2f} dB"
+)
+
+
+# ------------------------------------------------------------
+# 4. SSIM
+# ------------------------------------------------------------
+
+if ssim is None:
+
+    print()
+    print("SSIM")
+    print("----")
+    print(
+        "SSIM unavailable: "
+        "scikit-image is not installed."
+    )
+
+else:
+
+    original_cap = cv2.VideoCapture(
+        DAY14_INPUT_VIDEO
+    )
+
+    stego_cap = cv2.VideoCapture(
+        DAY14_STEGO_VIDEO
+    )
+
+    total_ssim = 0.0
+    ssim_frames = 0
+
+    while True:
+
+        original_success, original_frame = (
+            original_cap.read()
+        )
+
+        stego_success, stego_frame = (
+            stego_cap.read()
+        )
+
+        if not original_success or not stego_success:
+            break
+
+        original_gray = cv2.cvtColor(
+            original_frame,
+            cv2.COLOR_BGR2GRAY
+        )
+
+        stego_gray = cv2.cvtColor(
+            stego_frame,
+            cv2.COLOR_BGR2GRAY
+        )
+
+        frame_ssim = ssim(
+            original_gray,
+            stego_gray,
+            data_range=255
+        )
+
+        total_ssim += frame_ssim
+        ssim_frames += 1
+
+    original_cap.release()
+    stego_cap.release()
+
+    if ssim_frames > 0:
+
+        average_ssim = (
+            total_ssim
+            / ssim_frames
+        )
+
+    else:
+
+        average_ssim = 0.0
+
+    print()
+    print("SSIM")
+    print("----")
+    print(
+        f"Average SSIM: "
+        f"{average_ssim:.6f}"
+    )
+
+
+# ------------------------------------------------------------
+# 5. Embedding Time
+# ------------------------------------------------------------
+
+embedding_start = time.perf_counter()
+
+
+evaluation_cap = cv2.VideoCapture(
+    DAY14_INPUT_VIDEO
+)
+
+evaluation_writer = cv2.VideoWriter(
+    "output/day14_timing.avi",
+    cv2.VideoWriter_fourcc(*"FFV1"),
+    fps,
+    (width, height),
+    True
+)
+
+payload_position = 0
+timing_frame_number = 0
+
+
+while True:
+
+    success, frame = evaluation_cap.read()
+
+    if not success:
+        break
+
+    if (
+        timing_frame_number
+        % DAY14_FRAME_INTERVAL == 0
+        and payload_position
+        < len(day13_bits)
+    ):
+
+        remaining_bits = (
+            len(day13_bits)
+            - payload_position
+        )
+
+        chunk_size = min(
+            DAY14_BITS_PER_FRAME,
+            remaining_bits
+        )
+
+        chunk = day13_bits[
+            payload_position:
+            payload_position + chunk_size
+        ]
+
+        gray_frame = cv2.cvtColor(
+            frame,
+            cv2.COLOR_BGR2GRAY
+        )
+
+        LL, (
+            LH,
+            HL,
+            HH
+        ) = pywt.dwt2(
+            gray_frame.astype(
+                np.float32
+            ),
+            "haar"
+        )
+
+        dct_hh = cv2.dct(HH)
+
+        pairs = generate_pairs(
+            chunk_size
+        )
+
+        for bit, pair in zip(
+            chunk,
+            pairs
+        ):
+
+            (row_a, col_a), (
+                row_b,
+                col_b
+            ) = pair
+
+            coefficient_a = dct_hh[
+                row_a,
+                col_a
+            ]
+
+            coefficient_b = dct_hh[
+                row_b,
+                col_b
+            ]
+
+            centre = (
+                coefficient_a
+                + coefficient_b
+            ) / 2.0
+
+            if bit == "1":
+
+                dct_hh[
+                    row_a,
+                    col_a
+                ] = centre + 25.0
+
+                dct_hh[
+                    row_b,
+                    col_b
+                ] = centre - 25.0
+
+            else:
+
+                dct_hh[
+                    row_a,
+                    col_a
+                ] = centre - 25.0
+
+                dct_hh[
+                    row_b,
+                    col_b
+                ] = centre + 25.0
+
+        modified_HH = cv2.idct(
+            dct_hh
+        )
+
+        reconstructed = pywt.idwt2(
+            (
+                LL,
+                (
+                    LH,
+                    HL,
+                    modified_HH
+                )
+            ),
+            "haar"
+        )
+
+        reconstructed = np.clip(
+            reconstructed,
+            0,
+            255
+        ).astype(np.uint8)
+
+        frame = cv2.cvtColor(
+            reconstructed,
+            cv2.COLOR_GRAY2BGR
+        )
+
+        payload_position += chunk_size
+
+    evaluation_writer.write(frame)
+
+    timing_frame_number += 1
+
+
+evaluation_cap.release()
+evaluation_writer.release()
+
+embedding_time = (
+    time.perf_counter()
+    - embedding_start
+)
+
+
+print()
+print("Embedding Time")
+print("--------------")
+print(
+    f"Embedding time: "
+    f"{embedding_time:.4f} seconds"
+)
+
+
+# ------------------------------------------------------------
+# 6. Extraction Time
+# ------------------------------------------------------------
+
+extraction_start = time.perf_counter()
+
+
+timing_cap = cv2.VideoCapture(
+    "output/day14_timing.avi"
+)
+
+timing_extracted_bits = []
+timing_frame_number = 0
+
+
+while True:
+
+    success, frame = timing_cap.read()
+
+    if not success:
+        break
+
+    if (
+        timing_frame_number
+        % DAY14_FRAME_INTERVAL == 0
+        and len(timing_extracted_bits)
+        < len(day13_bits)
+    ):
+
+        remaining_bits = (
+            len(day13_bits)
+            - len(timing_extracted_bits)
+        )
+
+        chunk_size = min(
+            DAY14_BITS_PER_FRAME,
+            remaining_bits
+        )
+
+        gray_frame = cv2.cvtColor(
+            frame,
+            cv2.COLOR_BGR2GRAY
+        )
+
+        _, (
+            _,
+            _,
+            HH
+        ) = pywt.dwt2(
+            gray_frame.astype(
+                np.float32
+            ),
+            "haar"
+        )
+
+        dct_hh = cv2.dct(HH)
+
+        pairs = generate_pairs(
+            chunk_size
+        )
+
+        for pair in pairs:
+
+            (row_a, col_a), (
+                row_b,
+                col_b
+            ) = pair
+
+            coefficient_a = dct_hh[
+                row_a,
+                col_a
+            ]
+
+            coefficient_b = dct_hh[
+                row_b,
+                col_b
+            ]
+
+            bit = (
+                "1"
+                if coefficient_a > coefficient_b
+                else "0"
+            )
+
+            timing_extracted_bits.append(
+                bit
+            )
+
+    timing_frame_number += 1
+
+
+timing_cap.release()
+
+
+extraction_time = (
+    time.perf_counter()
+    - extraction_start
+)
+
+
+print()
+print("Extraction Time")
+print("---------------")
+print(
+    f"Extraction time: "
+    f"{extraction_time:.4f} seconds"
+)
+
+
+# ------------------------------------------------------------
+# 7. Final Day 14 Result
+# ------------------------------------------------------------
+
+print()
+print("=" * 60)
+print("DAY 14 FINAL RESULT")
+print("=" * 60)
+
+if recovery_accuracy == 100.0:
+
+    print(
+        "Recovery accuracy: SUCCESS"
+    )
+
+else:
+
+    print(
+        "Recovery accuracy: FAILED"
+    )
+
+
+print(
+    f"Embedding capacity: "
+    f"{embedding_capacity} bits"
+)
+
+print(
+    f"Average PSNR: "
+    f"{average_psnr:.2f} dB"
+)
+
+print(
+    f"Average MSE: "
+    f"{average_mse:.6f}"
+)
+
+if ssim is not None:
+
+    print(
+        f"Average SSIM: "
+        f"{average_ssim:.6f}"
+    )
+
+print(
+    f"Embedding time: "
+    f"{embedding_time:.4f} seconds"
+)
+
+print(
+    f"Extraction time: "
+    f"{extraction_time:.4f} seconds"
+)
+
+print()
+print("DAY 14 SYSTEM EVALUATION: SUCCESS")
