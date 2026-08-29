@@ -403,3 +403,422 @@ else:
             f"expected={expected}, "
             f"extracted={actual} → {status}"
         )
+
+        # ============================================================
+# DAY 2 — SMALL TEXT TEST
+# ============================================================
+#
+# Goal:
+#     HELLO
+#       ↓
+#     40 binary bits
+#       ↓
+#     DWT + DCT embedding
+#       ↓
+#     extraction
+#       ↓
+#     HELLO
+#
+# This section extends the successful Day 1 pair-based
+# embedding method from 8 bits to 40 bits.
+# ============================================================
+
+
+# ------------------------------------------------------------
+# 1. Secret text
+# ------------------------------------------------------------
+
+SECRET_TEXT = "HELLO"
+
+
+# ------------------------------------------------------------
+# 2. Convert text to binary
+# ------------------------------------------------------------
+#
+# Each character uses 8 bits.
+#
+# HELLO contains 5 characters:
+#
+#     5 × 8 = 40 bits
+#
+# Example:
+#
+#     H → 01001000
+
+payload_bits = []
+
+for character in SECRET_TEXT:
+
+    character_bits = [
+        int(bit)
+        for bit in f"{ord(character):08b}"
+    ]
+
+    payload_bits.extend(character_bits)
+
+
+print("\n\n=== DAY 2: SMALL TEXT TEST ===")
+
+print(f"Secret text: {SECRET_TEXT}")
+
+print(
+    "Secret binary:",
+    " ".join(
+        f"{ord(character):08b}"
+        for character in SECRET_TEXT
+    )
+)
+
+print(f"Total bits: {len(payload_bits)}")
+
+
+# ------------------------------------------------------------
+# 3. Create 40 coefficient pairs
+# ------------------------------------------------------------
+#
+# One pair stores one bit.
+#
+# 40 bits therefore require 40 pairs.
+#
+# We use the same pair-based method that successfully
+# recovered 0xAA on Day 1.
+
+TEXT_PAIRS = []
+
+for row in range(1, 9):
+
+    for col in range(1, 11, 2):
+
+        TEXT_PAIRS.append(
+            (
+                (row, col),
+                (row, col + 1)
+            )
+        )
+
+
+# Make sure we really have 40 pairs.
+
+if len(TEXT_PAIRS) != 40:
+
+    raise RuntimeError(
+        f"Expected 40 pairs, got {len(TEXT_PAIRS)}"
+    )
+
+
+# ------------------------------------------------------------
+# 4. Load the original frame
+# ------------------------------------------------------------
+
+text_image = cv2.imread(
+    INPUT,
+    cv2.IMREAD_GRAYSCALE
+)
+
+if text_image is None:
+
+    raise FileNotFoundError(
+        f"Could not load {INPUT}"
+    )
+
+
+# ------------------------------------------------------------
+# 5. Apply DWT
+# ------------------------------------------------------------
+
+text_LL, (
+    text_LH,
+    text_HL,
+    text_HH
+) = pywt.dwt2(
+    text_image.astype(np.float32),
+    "haar"
+)
+
+
+# ------------------------------------------------------------
+# 6. Apply DCT to HH
+# ------------------------------------------------------------
+
+text_dct_hh = cv2.dct(text_HH)
+
+
+# ------------------------------------------------------------
+# 7. Embed all 40 bits
+# ------------------------------------------------------------
+
+print("\n--- TEXT EMBEDDING ---")
+
+TEXT_MARGIN = 50.0
+
+for index, (bit, pair) in enumerate(
+    zip(payload_bits, TEXT_PAIRS),
+    start=1
+):
+
+    (row_a, col_a), (row_b, col_b) = pair
+
+    # Read the original coefficient pair.
+    coefficient_a = text_dct_hh[row_a, col_a]
+    coefficient_b = text_dct_hh[row_b, col_b]
+
+    # Calculate their centre value.
+    centre = (
+        coefficient_a + coefficient_b
+    ) / 2.0
+
+    # Encode the bit through the relationship
+    # between the two coefficients.
+    #
+    # Bit 1 → A > B
+    # Bit 0 → A < B
+
+    if bit == 1:
+
+        text_dct_hh[row_a, col_a] = (
+            centre + TEXT_MARGIN / 2
+        )
+
+        text_dct_hh[row_b, col_b] = (
+            centre - TEXT_MARGIN / 2
+        )
+
+    else:
+
+        text_dct_hh[row_a, col_a] = (
+            centre - TEXT_MARGIN / 2
+        )
+
+        text_dct_hh[row_b, col_b] = (
+            centre + TEXT_MARGIN / 2
+        )
+
+
+# ------------------------------------------------------------
+# 8. Inverse DCT
+# ------------------------------------------------------------
+
+text_modified_HH = cv2.idct(
+    text_dct_hh
+)
+
+
+# ------------------------------------------------------------
+# 9. Inverse DWT
+# ------------------------------------------------------------
+
+text_reconstructed = pywt.idwt2(
+    (
+        text_LL,
+        (
+            text_LH,
+            text_HL,
+            text_modified_HH
+        )
+    ),
+    "haar"
+)
+
+
+# ------------------------------------------------------------
+# 10. Convert reconstructed image to uint8
+# ------------------------------------------------------------
+
+text_reconstructed = np.clip(
+    text_reconstructed,
+    0,
+    255
+).astype(np.uint8)
+
+
+# ------------------------------------------------------------
+# 11. Save text-containing image
+# ------------------------------------------------------------
+
+TEXT_OUTPUT = "output/hello_embedded.png"
+
+if not cv2.imwrite(
+    TEXT_OUTPUT,
+    text_reconstructed
+):
+
+    raise IOError(
+        f"Could not save {TEXT_OUTPUT}"
+    )
+
+print(
+    f"Text embedded image saved to: {TEXT_OUTPUT}"
+)
+
+
+# ============================================================
+# DAY 2 — EXTRACTION
+# ============================================================
+
+
+# ------------------------------------------------------------
+# 12. Load the embedded image
+# ------------------------------------------------------------
+
+text_embedded_image = cv2.imread(
+    TEXT_OUTPUT,
+    cv2.IMREAD_GRAYSCALE
+)
+
+if text_embedded_image is None:
+
+    raise FileNotFoundError(
+        f"Could not load {TEXT_OUTPUT}"
+    )
+
+
+# ------------------------------------------------------------
+# 13. DWT on embedded image
+# ------------------------------------------------------------
+
+_, (
+    _,
+    _,
+    extracted_text_HH
+) = pywt.dwt2(
+    text_embedded_image.astype(np.float32),
+    "haar"
+)
+
+
+# ------------------------------------------------------------
+# 14. DCT on extracted HH
+# ------------------------------------------------------------
+
+extracted_text_dct = cv2.dct(
+    extracted_text_HH
+)
+
+
+# ------------------------------------------------------------
+# 15. Extract all 40 bits
+# ------------------------------------------------------------
+
+extracted_text_bits = []
+
+print("\n--- TEXT EXTRACTION ---")
+
+for index, pair in enumerate(
+    TEXT_PAIRS,
+    start=1
+):
+
+    (row_a, col_a), (row_b, col_b) = pair
+
+    coefficient_a = extracted_text_dct[
+        row_a,
+        col_a
+    ]
+
+    coefficient_b = extracted_text_dct[
+        row_b,
+        col_b
+    ]
+
+    # Compare the two coefficients.
+    #
+    # A > B → 1
+    # A < B → 0
+
+    extracted_bit = (
+        1
+        if coefficient_a > coefficient_b
+        else 0
+    )
+
+    extracted_text_bits.append(
+        extracted_bit
+    )
+
+
+# ------------------------------------------------------------
+# 16. Convert 40 bits back to text
+# ------------------------------------------------------------
+
+extracted_text = ""
+
+for position in range(
+    0,
+    len(extracted_text_bits),
+    8
+):
+
+    byte_bits = extracted_text_bits[
+        position:position + 8
+    ]
+
+    value = 0
+
+    for bit in byte_bits:
+
+        value = (
+            (value << 1) | bit
+        )
+
+    extracted_text += chr(value)
+
+
+# ------------------------------------------------------------
+# 17. Display result
+# ------------------------------------------------------------
+
+extracted_binary = " ".join(
+    "".join(
+        str(bit)
+        for bit in extracted_text_bits[
+            position:position + 8
+        ]
+    )
+    for position in range(
+        0,
+        len(extracted_text_bits),
+        8
+    )
+)
+
+print("\n=== DAY 2 FINAL RESULT ===")
+
+print(
+    f"Original text:   {SECRET_TEXT}"
+)
+
+print(
+    f"Original binary: "
+    f"{' '.join(f'{ord(c):08b}' for c in SECRET_TEXT)}"
+)
+
+print(
+    f"Extracted text:  {extracted_text}"
+)
+
+print(
+    f"Extracted binary: {extracted_binary}"
+)
+
+
+# ------------------------------------------------------------
+# 18. Verify text
+# ------------------------------------------------------------
+
+if extracted_text == SECRET_TEXT:
+
+    print("\nTEXT EXTRACTION: SUCCESS")
+    print(
+        "HELLO → binary → DWT + DCT → "
+        "embed → extract → HELLO"
+    )
+
+else:
+
+    print("\nTEXT EXTRACTION: FAILED")
+    print(
+        f"Expected: {SECRET_TEXT}"
+    )
+    print(
+        f"Received: {extracted_text}"
+    )
