@@ -1867,3 +1867,82 @@ else:
         "Extracted:",
         day5_extracted_text
     )
+
+    # ============================================================
+# DAY 6 — FRAME SELECTION
+# ============================================================
+
+print("\n\n============================================================")
+print("DAY 6 — FRAME SELECTION")
+print("============================================================")
+
+# Select every Nth frame for payload embedding
+FRAME_INTERVAL = 10
+
+# Number of frames in our test video
+TOTAL_FRAMES = 100
+
+selected_frames = []
+
+for frame_number in range(TOTAL_FRAMES):
+
+    if frame_number % FRAME_INTERVAL == 0:
+        selected_frames.append(frame_number)
+
+
+print(
+    f"Frame interval: every {FRAME_INTERVAL} frames"
+)
+
+print(
+    f"Total frames: {TOTAL_FRAMES}"
+)
+
+print(
+    f"Selected frames: {len(selected_frames)}"
+)
+
+print(
+    "Selected frame numbers:"
+)
+
+print(
+    selected_frames
+)
+
+
+# ------------------------------------------------------------
+# Verify frame selection
+# ------------------------------------------------------------
+
+expected_frames = list(
+    range(
+        0,
+        TOTAL_FRAMES,
+        FRAME_INTERVAL
+    )
+)
+
+if selected_frames == expected_frames:
+
+    print(
+        "\nDAY 6 FRAME SELECTION: SUCCESS"
+    )
+
+    print(
+        "Payload frames selected correctly."
+    )
+
+else:
+
+    print(
+        "\nDAY 6 FRAME SELECTION: FAILED"
+    )
+
+    print(
+        f"Expected: {expected_frames}"
+    )
+
+    print(
+        f"Got:      {selected_frames}"
+    )
