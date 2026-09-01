@@ -5,7 +5,7 @@ import time
 
 
 # Input and output video files
-input_file = Path("day7_embedded_video.mp4")
+input_file = Path("../day7_embedded_video.mp4")
 output_file = Path("encrypted_video_gcm.enc")
 
 
