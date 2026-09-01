@@ -1,1 +1,4 @@
 pycryptodome
+numpy
+qiskit
+qiskit-aer
