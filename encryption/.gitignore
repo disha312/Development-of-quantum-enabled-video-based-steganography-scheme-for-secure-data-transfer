@@ -1,0 +1,15 @@
+# Python cache
+__pycache__/
+*.pyc
+
+# Test video
+day7_embedded_video.mp4
+day7_embedded_video.mp4
+
+
+# Generated encrypted files
+encrypted_video.enc
+encrypted_video_gcm.enc
+
+# Generated quantum key
+quantum_key.bin
