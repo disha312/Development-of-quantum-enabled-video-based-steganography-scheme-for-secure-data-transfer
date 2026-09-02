@@ -50,7 +50,7 @@ my_qkd.py
 
 Contains the BB84 Quantum Key Distribution implementation.
 
-It:
+It: 
 
 Generates random bits and bases.
 Simulates quantum transmission.
